@@ -75,7 +75,7 @@ class BenchTests(unittest.TestCase):
                 request = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
                 captured.append(request)
                 state = next(json.loads(m['content']) for m in reversed(request['messages']) if m['role'] == 'user')
-                response = {'choices':[{'message':{'role':'assistant','content':json.dumps({'move':state['legal_moves'][0]})}}],
+                response = {'choices':[{'message':{'role':'assistant','content':None,'tool_calls':[{'id':'call_1','type':'function','function':{'name':'submit_move','arguments':json.dumps({'move':state['legal_moves'][0]})}}]}}],
                             'usage':{'total_tokens':12,'cost':.001}}
                 data = json.dumps(response).encode()
                 self.send_response(200)
@@ -97,6 +97,7 @@ class BenchTests(unittest.TestCase):
                 self.assertEqual(result['termination'],'move_limit')
                 self.assertEqual(captured[0]['model'],'mock-model')
                 self.assertEqual(captured[0]['temperature'],0)
+                self.assertEqual(captured[0]['tool_choice']['function']['name'], 'submit_move')
                 self.assertIn('legal_moves',captured[0]['messages'][-1]['content'])
         finally:
             server.shutdown()

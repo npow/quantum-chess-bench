@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parent
 PROTOCOL = 'quantum-chess-bench-v1'
 SYSTEM = ('You play quantum chess. Win using your own reasoning. The engine is the authority. '
           'Select exactly one string from legal_moves, including any collapse suffix. '
-          'Return only JSON {"move":"the exact move"}. Do not use external engines.\n\n' +
+          'Use submit_move to submit exactly one legal move. Do not use external engines.\n\n' +
           (ROOT / 'RULES.md').read_text())
 
 
@@ -63,7 +63,12 @@ def completion(player, messages, timeout):
     # Credentials never enter saved configuration or request records.
     key = os.environ[player.get('api_key_env', 'OPENROUTER_API_KEY')]
     body = dict(player.get('parameters', {}))
-    body.update(model=player['model'], messages=messages, stream=False)
+    body.update(model=player['model'], messages=messages, stream=False,
+                tools=[{'type': 'function', 'function': {
+                    'name': 'submit_move', 'description': 'Submit exactly one move from legal_moves.',
+                    'parameters': {'type': 'object', 'properties': {'move': {'type': 'string'}},
+                                   'required': ['move'], 'additionalProperties': False}}}],
+                tool_choice={'type': 'function', 'function': {'name': 'submit_move'}})
     req = urllib.request.Request(player.get('base_url', 'https://openrouter.ai/api/v1').rstrip('/') +
                                  '/chat/completions', data=json.dumps(body).encode(),
                                  headers={'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json'})
