@@ -1,0 +1,17 @@
+[workspace]
+resolver = "3"
+members = ["vendor/qchess", "vendor/glicko2"]
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Avi-D-coder/quantum-chess"
+[package]
+name = "qbench-engine"
+version.workspace = true
+edition.workspace = true
+[dependencies]
+qchess = { path = "vendor/qchess" }
+glicko2 = { path = "vendor/glicko2" }
+serde_json = "1"
