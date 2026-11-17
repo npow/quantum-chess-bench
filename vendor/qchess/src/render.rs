@@ -59,7 +59,13 @@ pub fn board_text(pos: &Position) -> String {
             } else {
                 "piece"
             };
-            out.push_str(&format!("  {} {}: {} | {}\n", p.color.name(), kind, half(0), half(1)));
+            out.push_str(&format!(
+                "  {} {}: {} | {}\n",
+                p.color.name(),
+                kind,
+                half(0),
+                half(1)
+            ));
         }
     }
     out

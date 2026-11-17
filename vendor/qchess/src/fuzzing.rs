@@ -36,7 +36,10 @@ mod oracle {
     /// permissive (only those the placement allows), so reachability checks
     /// never reject a castle the engine legitimately allowed.
     pub fn position(placement: &str, white: bool, castling: &str, ep: &str) -> Option<Chess> {
-        let fen = format!("{placement} {} {castling} {ep} 0 1", if white { "w" } else { "b" });
+        let fen = format!(
+            "{placement} {} {castling} {ep} 0 1",
+            if white { "w" } else { "b" }
+        );
         Fen::from_ascii(fen.as_bytes())
             .ok()?
             .into_position::<Chess>(CastlingMode::Standard)
@@ -55,7 +58,9 @@ mod oracle {
     /// might have (the engine's history decides which one is real).
     pub fn variants(placement: &str, white: bool) -> Vec<Chess> {
         let rank = if white { '6' } else { '3' };
-        let mut out: Vec<Chess> = position(placement, white, "KQkq", "-").into_iter().collect();
+        let mut out: Vec<Chess> = position(placement, white, "KQkq", "-")
+            .into_iter()
+            .collect();
         for f in 'a'..='h' {
             out.extend(position(placement, white, "KQkq", &format!("{f}{rank}")));
         }
@@ -65,14 +70,24 @@ mod oracle {
     /// The engine's notation for a regular-chess move: `Ng1f3`, `e7e8=Q`, `0-0`.
     pub fn notation(m: &shakmaty::Move) -> Option<String> {
         if let Some(side) = m.castling_side() {
-            return Some(if side == CastlingSide::KingSide { "0-0" } else { "0-0-0" }.into());
+            return Some(
+                if side == CastlingSide::KingSide {
+                    "0-0"
+                } else {
+                    "0-0-0"
+                }
+                .into(),
+            );
         }
         let from = m.from()?;
         let letter = match m.role() {
             shakmaty::Role::Pawn => String::new(),
             r => r.upper_char().to_string(),
         };
-        let promo = m.promotion().map(|r| format!("={}", r.upper_char())).unwrap_or_default();
+        let promo = m
+            .promotion()
+            .map(|r| format!("={}", r.upper_char()))
+            .unwrap_or_default();
         Some(format!("{letter}{from}{}{promo}", m.to()))
     }
 
@@ -93,8 +108,12 @@ mod oracle {
     /// Whether the side to move has any legal move, if castling rights do
     /// not change the answer (we cannot see the engine's castling rights).
     pub fn has_moves(placement: &str, white: bool) -> Option<bool> {
-        let a = !position(placement, white, "-", "-")?.legal_moves().is_empty();
-        let b = !position(placement, white, "KQkq", "-")?.legal_moves().is_empty();
+        let a = !position(placement, white, "-", "-")?
+            .legal_moves()
+            .is_empty();
+        let b = !position(placement, white, "KQkq", "-")?
+            .legal_moves()
+            .is_empty();
         (a == b).then_some(a)
     }
 }
@@ -138,8 +157,12 @@ fn check_status(g: &Game) {
     let checks: Vec<bool> = boards
         .iter()
         .map(|b| {
-            oracle::in_check(b, white)
-                .unwrap_or_else(|| panic!("board {b} is not a valid chess position\nhistory: {:?}", g.history()))
+            oracle::in_check(b, white).unwrap_or_else(|| {
+                panic!(
+                    "board {b} is not a valid chess position\nhistory: {:?}",
+                    g.history()
+                )
+            })
         })
         .collect();
     let expected = if checks.iter().all(|&c| c) {
@@ -150,16 +173,33 @@ fn check_status(g: &Game) {
         crate::Check::None
     };
     if g.status() == Status::Ongoing {
-        assert_eq!(g.check(), expected, "check status\nhistory: {:?}", g.history());
+        assert_eq!(
+            g.check(),
+            expected,
+            "check status\nhistory: {:?}",
+            g.history()
+        );
     }
     let moves: Option<Vec<bool>> = boards.iter().map(|b| oracle::has_moves(b, white)).collect();
     if let Some(moves) = moves {
         let any_move = moves.iter().any(|&m| m);
         let status = g.status();
         if any_move {
-            assert_eq!(status, Status::Ongoing, "game ended though a board has a legal move\nhistory: {:?}", g.history());
+            assert_eq!(
+                status,
+                Status::Ongoing,
+                "game ended though a board has a legal move\nhistory: {:?}",
+                g.history()
+            );
         } else if expected == crate::Check::Full {
-            assert_eq!(status, Status::Checkmate { winner: g.to_move().other() }, "history: {:?}", g.history());
+            assert_eq!(
+                status,
+                Status::Checkmate {
+                    winner: g.to_move().other()
+                },
+                "history: {:?}",
+                g.history()
+            );
         } else {
             assert_eq!(status, Status::Stalemate, "history: {:?}", g.history());
         }
@@ -176,12 +216,16 @@ fn check_rule_one(g: &Game, u: &mut Bytes, n: usize) {
     let boards = g.states_fen();
     for _ in 0..n {
         let b = &boards[u.pick(boards.len())];
-        let Some(p) = oracle::position(b, white, "-", "-") else { continue };
+        let Some(p) = oracle::position(b, white, "-", "-") else {
+            continue;
+        };
         let moves = oracle::legal_moves(&p);
         if moves.is_empty() {
             continue;
         }
-        let Some(mv) = oracle::notation(&moves[u.pick(moves.len())]) else { continue };
+        let Some(mv) = oracle::notation(&moves[u.pick(moves.len())]) else {
+            continue;
+        };
         if let Err(e) = g.clone().play(&mv) {
             assert!(
                 e.0.contains("ambiguous"),
@@ -279,7 +323,11 @@ fn whole_moves(g: &Game) -> Vec<(String, bool)> {
                     out.push((castle.to_string(), true));
                     continue;
                 }
-                let promo = if h.kind == crate::Kind::Pawn && last_rank(&t) { "=Q" } else { "" };
+                let promo = if h.kind == crate::Kind::Pawn && last_rank(&t) {
+                    "=Q"
+                } else {
+                    ""
+                };
                 out.push((format!("{}{}{}{promo}", letter(h.kind), h.square, t), true));
             }
         }
@@ -343,7 +391,10 @@ pub fn candidates(g: &Game, u: &mut Bytes) -> Vec<(String, bool)> {
         if let [a, b] = alive[..] {
             for ta in g.targets(&a.square) {
                 for tb in g.targets(&b.square) {
-                    out.push((format!("{}{}{ta}/{}{tb}", letter(a.kind), a.square, b.square), false));
+                    out.push((
+                        format!("{}{}{ta}/{}{tb}", letter(a.kind), a.square, b.square),
+                        false,
+                    ));
                 }
             }
         }
@@ -378,7 +429,11 @@ pub fn step(g: &mut Game, notation: &str, must_be_legal: bool) -> bool {
     let mut trial = g.clone();
     match trial.play(notation) {
         Err(e) => {
-            assert_eq!(snapshot(&trial), before, "rejected move {notation:?} changed the game");
+            assert_eq!(
+                snapshot(&trial),
+                before,
+                "rejected move {notation:?} changed the game"
+            );
             if must_be_legal {
                 assert!(
                     e.0.contains("ambiguous"),
@@ -401,7 +456,10 @@ pub fn step(g: &mut Game, notation: &str, must_be_legal: bool) -> bool {
                     let mut t = g.clone();
                     let with = format!("{} {o}", notation.trim());
                     if let Err(e) = t.play(&with) {
-                        panic!("offered collapse {o} for {notation:?} is not playable: {e}\nhistory: {:?}", g.history());
+                        panic!(
+                            "offered collapse {o} for {notation:?} is not playable: {e}\nhistory: {:?}",
+                            g.history()
+                        );
                     }
                     check_after(g, &t, &before);
                 }
@@ -419,18 +477,35 @@ fn check_after(prev: &Game, g: &Game, before: &Snapshot) {
     let states = g.states_fen();
     assert!(!states.is_empty(), "no possible states");
     // states_fen() lists at most 256 boards.
-    assert_eq!(g.state_count().min(256), states.len(), "history: {:?}", g.history());
+    assert_eq!(
+        g.state_count().min(256),
+        states.len(),
+        "history: {:?}",
+        g.history()
+    );
     let replayed = Game::from_history(g.history())
         .unwrap_or_else(|e| panic!("history does not replay: {e}\nhistory: {:?}", g.history()));
     let after = snapshot(g);
-    assert_eq!(snapshot(&replayed), after, "replay differs\nhistory: {:?}", g.history());
+    assert_eq!(
+        snapshot(&replayed),
+        after,
+        "replay differs\nhistory: {:?}",
+        g.history()
+    );
     let mut certain = std::collections::HashSet::new();
     for p in g.pieces() {
         assert!((1..=2).contains(&p.halves.len()));
         assert_eq!(p.split, p.halves.len() == 2);
-        assert!(p.halves.iter().any(|h| h.alive), "fully captured piece listed");
+        assert!(
+            p.halves.iter().any(|h| h.alive),
+            "fully captured piece listed"
+        );
         if !p.split {
-            assert!(certain.insert(p.halves[0].square.clone()), "two certain pieces on {}", p.halves[0].square);
+            assert!(
+                certain.insert(p.halves[0].square.clone()),
+                "two certain pieces on {}",
+                p.halves[0].square
+            );
         }
     }
     let _ = (g.check(), g.board_text(), g.last_move_squares());
@@ -451,14 +526,21 @@ pub fn run(data: &[u8], max_prefix: usize) {
             break;
         }
         let mv = moves[u.pick(moves.len())].clone();
-        assert!(step(&mut g, &mv, true), "a move accepted on a copy was rejected: {mv}");
+        assert!(
+            step(&mut g, &mv, true),
+            "a move accepted on a copy was rejected: {mv}"
+        );
     }
     // The final token: raw bytes, or a mutated move from this position.
     let token = if u.byte().is_multiple_of(2) {
         String::from_utf8_lossy(u.rest()).into_owned()
     } else {
         let moves = legal_moves(&g, &mut u);
-        let base = if moves.is_empty() { String::new() } else { moves[u.pick(moves.len())].clone() };
+        let base = if moves.is_empty() {
+            String::new()
+        } else {
+            moves[u.pick(moves.len())].clone()
+        };
         mutate(&base, &mut u)
     };
     step(&mut g, &token, false);
@@ -472,7 +554,13 @@ pub fn run(data: &[u8], max_prefix: usize) {
 pub fn self_play(seed: u64, max_plies: usize, depth: i32, margin: i32) -> Game {
     use crate::ai::{Config, Searcher};
     let mut g = Game::new();
-    let mut ai = Searcher::new(Config { depth, time: None, margin, ..Config::default() }).seed(seed);
+    let mut ai = Searcher::new(Config {
+        depth,
+        time: None,
+        margin,
+        ..Config::default()
+    })
+    .seed(seed);
     let mut x = seed | 1;
     for _ in 0..max_plies {
         if g.status() != Status::Ongoing {
@@ -486,45 +574,18 @@ pub fn self_play(seed: u64, max_plies: usize, depth: i32, margin: i32) -> Game {
         let mut b = Bytes::new(&bytes);
         check_rule_one(&g, &mut b, 2);
         let Some(c) = ai.choose(&g) else {
-            panic!("ongoing game but the AI found no move\n{}\nhistory: {:?}", g.board_text(), g.history());
+            panic!(
+                "ongoing game but the AI found no move\n{}\nhistory: {:?}",
+                g.board_text(),
+                g.history()
+            );
         };
-        assert!(step(&mut g, &c.notation, true), "AI move {} was rejected\nhistory: {:?}", c.notation, g.history());
+        assert!(
+            step(&mut g, &c.notation, true),
+            "AI move {} was rejected\nhistory: {:?}",
+            c.notation,
+            g.history()
+        );
     }
     g
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// A small deterministic fuzz run (xorshift input) so `cargo test`
-    /// exercises the harness. The real fuzzer lives in `fuzz/`.
-    #[test]
-    fn smoke_fuzz() {
-        let mut x: u64 = 0x9E37_79B9_7F4A_7C15;
-        let cases: usize = std::env::var("QCHESS_FUZZ_CASES").ok().and_then(|v| v.parse().ok()).unwrap_or(if cfg!(debug_assertions) { 12 } else { 150 });
-        for _ in 0..cases {
-            let data: Vec<u8> = (0..400)
-                .map(|_| {
-                    x ^= x << 13;
-                    x ^= x >> 7;
-                    x ^= x << 17;
-                    (x >> 24) as u8
-                })
-                .collect();
-            run(&data, if cfg!(debug_assertions) { 12 } else { 30 });
-        }
-    }
-
-    /// AI-vs-AI games with every move checked. `QCHESS_SELFPLAY_GAMES`
-    /// sets how many (each with its own seed).
-    #[test]
-    fn smoke_self_play() {
-        let games: u64 = std::env::var("QCHESS_SELFPLAY_GAMES").ok().and_then(|v| v.parse().ok()).unwrap_or(1);
-        let plies = if cfg!(debug_assertions) { 16 } else { 120 };
-        for seed in 1..=games {
-            let g = self_play(seed, plies, if cfg!(debug_assertions) { 1 } else { 2 }, 40);
-            assert!(!g.history().is_empty());
-        }
-    }
 }

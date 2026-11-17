@@ -8,9 +8,19 @@ repository.workspace = true
 description = "Quantum chess rules engine and AI (std only)"
 publish = false
 
+[package.metadata.verus]
+verify = true
+
 [dependencies]
 # Independent chess rules used only as a fuzzing oracle.
 shakmaty = { version = "0.27", optional = true }
+vstd = { version = "=0.0.0-2026-11-01-0251", optional = true }
+
+[lib]
+doctest = false
+
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ["cfg(kani)"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-time = "1"
@@ -18,9 +28,9 @@ web-time = "1"
 [features]
 # Exposes `qchess::fuzzing` for the cargo-fuzz targets in `fuzz/`.
 fuzzing = ["dep:shakmaty"]
+verus = ["dep:vstd"]
 
 [dev-dependencies]
-shakmaty = "0.27"
 mimalloc = { version = "0.1", default-features = false }
 
 [[example]]

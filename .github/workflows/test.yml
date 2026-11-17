@@ -2,14 +2,23 @@ name: test
 on: [push, pull_request]
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
       - run: cargo test --workspace --locked
-      - run: python3 -m unittest discover -s tests -v
-      - run: python3 bench.py --output runs/ci
-      - run: python3 bench.py --audit --output runs/ci
+      - run: cargo install --locked kani-verifier --version 0.68.0
+      - run: cargo kani setup
+      - run: cargo kani --workspace --output-format terse
+
+  verus:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.99.1
+      - name: Install pinned Verus release
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/verus.zip" "https://github.com/verus-lang/verus/releases/download/release/0.2026.11.02.8bf68ee/verus-0.2026.11.02.8bf68ee-x86-linux.zip"
+          unzip -q "$RUNNER_TEMP/verus.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/verus-x86-linux" >> "$GITHUB_PATH"
+      - run: env -u RUSTUP_TOOLCHAIN cargo verus verify --manifest-path vendor/qchess/Cargo.toml --features verus

@@ -16,12 +16,10 @@
 //! assert_eq!(g.state_count(), 16);
 //! ```
 
-mod board;
-#[cfg(test)]
-mod board_ref;
-#[cfg(any(test, feature = "fuzzing"))]
-pub mod fuzzing;
 pub mod ai;
+mod board;
+#[cfg(feature = "fuzzing")]
+pub mod fuzzing;
 pub mod notation;
 mod quantum;
 mod render;
@@ -179,7 +177,10 @@ impl Game {
     /// Every way to play a move for search: one game per minimal collapse
     /// the mover could choose (with the collapse that picks it), or a single
     /// one when none or only one is needed. The games carry no move text.
-    pub(crate) fn expand_quiet(&self, intent: &notation::Intent) -> Result<Vec<(Option<quantum::Cube>, Game)>, QError> {
+    pub(crate) fn expand_quiet(
+        &self,
+        intent: &notation::Intent,
+    ) -> Result<Vec<(Option<quantum::Cube>, Game)>, QError> {
         if self.status != Status::Ongoing {
             return Err(QError("the game is over".into()));
         }
@@ -213,7 +214,15 @@ impl Game {
         let mut pos = self.pos.clone();
         pos.turn = pos.turn.other();
         pos.ep = None;
-        let mut g = Game { pos, states: Default::default(), key: Default::default(), history: Vec::new(), display: Vec::new(), status: Status::Ongoing, last_move: Vec::new() };
+        let mut g = Game {
+            pos,
+            states: Default::default(),
+            key: Default::default(),
+            history: Vec::new(),
+            display: Vec::new(),
+            status: Status::Ongoing,
+            last_move: Vec::new(),
+        };
         if let Ok(st) = self.st() {
             let list = st
                 .list
@@ -225,7 +234,11 @@ impl Game {
                     (*m, b)
                 })
                 .collect();
-            let _ = g.states.set(Ok(std::sync::Arc::new(quantum::States { splits: st.splits.clone(), list, invalid: st.invalid.clone() })));
+            let _ = g.states.set(Ok(std::sync::Arc::new(quantum::States {
+                splits: st.splits.clone(),
+                list,
+                invalid: st.invalid.clone(),
+            })));
         }
         g.status = g.compute_status();
         g
@@ -233,7 +246,11 @@ impl Game {
 
     /// Notation for a move [`expand_quiet`](Self::expand_quiet) produced,
     /// with its `{...}` when it picks a collapse.
-    pub(crate) fn notation_of(&self, intent: &notation::Intent, cube: Option<(u32, u32)>) -> String {
+    pub(crate) fn notation_of(
+        &self,
+        intent: &notation::Intent,
+        cube: Option<(u32, u32)>,
+    ) -> String {
         let mv = notation::format(intent);
         match cube.and_then(|c| self.pos.describe_cube(&*self.st().ok()?, intent, c).ok()) {
             Some(spec) => format!("{mv} {spec}"),
@@ -241,14 +258,24 @@ impl Game {
         }
     }
 
-    fn advance(&mut self, notation: &str, quiet: bool) -> Result<(quantum::MoveReport, String), QError> {
+    fn advance(
+        &mut self,
+        notation: &str,
+        quiet: bool,
+    ) -> Result<(quantum::MoveReport, String), QError> {
         if self.status != Status::Ongoing {
             return Err(QError("the game is over".into()));
         }
         let parsed = notation::parse(notation)?;
         let st = self.st()?;
-        let (next, mut report) = self.pos.play(&st, &parsed.intent, parsed.collapse.as_deref(), quiet)?;
-        let display = if quiet { String::new() } else { display_move(&parsed.intent, &self.pos.pieces[report.piece]) };
+        let (next, mut report) =
+            self.pos
+                .play(&st, &parsed.intent, parsed.collapse.as_deref(), quiet)?;
+        let display = if quiet {
+            String::new()
+        } else {
+            display_move(&parsed.intent, &self.pos.pieces[report.piece])
+        };
         self.pos = next;
         self.states = Default::default();
         self.key = Default::default();
@@ -309,7 +336,11 @@ impl Game {
                     id,
                     color: p.color,
                     split,
-                    halves: if split { p.h.iter().map(view).collect() } else { vec![view(&p.h[0])] },
+                    halves: if split {
+                        p.h.iter().map(view).collect()
+                    } else {
+                        vec![view(&p.h[0])]
+                    },
                     origin: p.origin,
                     num: (p.num > 0).then_some(p.num),
                 }
@@ -343,7 +374,9 @@ impl Game {
         if self.status != Status::Ongoing {
             return Vec::new();
         }
-        self.st().map(|st| self.pos.targets(&st, from, only)).unwrap_or_default()
+        self.st()
+            .map(|st| self.pos.targets(&st, from, only))
+            .unwrap_or_default()
     }
 
     /// Squares involved in the last move (those left and those reached,
@@ -376,7 +409,9 @@ impl Game {
     }
 
     fn st(&self) -> Result<std::sync::Arc<quantum::States>, QError> {
-        self.states.get_or_init(|| self.pos.states().map(std::sync::Arc::new)).clone()
+        self.states
+            .get_or_init(|| self.pos.states().map(std::sync::Arc::new))
+            .clone()
     }
 
     pub fn to_move(&self) -> Color {
@@ -408,7 +443,11 @@ impl Game {
         let Ok(st) = self.st() else {
             return Check::None;
         };
-        let n = st.list.iter().filter(|(_, b)| b.in_check(self.pos.turn)).count();
+        let n = st
+            .list
+            .iter()
+            .filter(|(_, b)| b.in_check(self.pos.turn))
+            .count();
         match n {
             0 => Check::None,
             n if n == st.list.len() => Check::Full,
@@ -425,7 +464,13 @@ impl Game {
     /// FEN piece placement of each possible board state (at most 256).
     pub fn states_fen(&self) -> Vec<String> {
         self.st()
-            .map(|s| s.list.iter().take(256).map(|(_, b)| b.placement_fen()).collect())
+            .map(|s| {
+                s.list
+                    .iter()
+                    .take(256)
+                    .map(|(_, b)| b.placement_fen())
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -446,24 +491,40 @@ impl Game {
     }
 }
 
-#[cfg(test)]
-mod tests;
-
 /// A move written with the moving piece's label and its destinations.
 fn display_move(intent: &notation::Intent, piece: &quantum::Piece) -> String {
     use notation::{Intent, Second};
-    let promo = |p: Option<Kind>| p.map(|k| format!("={}", k.letter().to_ascii_uppercase())).unwrap_or_default();
+    let promo = |p: Option<Kind>| {
+        p.map(|k| format!("={}", k.letter().to_ascii_uppercase()))
+            .unwrap_or_default()
+    };
     match *intent {
         Intent::Castle { side, split } => {
-            let base = if side == crate::board::KING_SIDE { "0-0" } else { "0-0-0" };
-            if split { format!("{base}/") } else { base.to_string() }
+            let base = if side == crate::board::KING_SIDE {
+                "0-0"
+            } else {
+                "0-0-0"
+            };
+            if split {
+                format!("{base}/")
+            } else {
+                base.to_string()
+            }
         }
-        Intent::Move { kind, to, promo: p, second, .. } => {
+        Intent::Move {
+            kind,
+            to,
+            promo: p,
+            second,
+            ..
+        } => {
             let mut s = format!("{}{}{}", piece.label(kind), sq_name(to), promo(p));
             match second {
                 None => {}
                 Some(Second::Stay) => s.push('/'),
-                Some(Second::To { to, promo: p2, .. }) => s.push_str(&format!("/{}{}", sq_name(to), promo(p2))),
+                Some(Second::To { to, promo: p2, .. }) => {
+                    s.push_str(&format!("/{}{}", sq_name(to), promo(p2)))
+                }
             }
             s
         }

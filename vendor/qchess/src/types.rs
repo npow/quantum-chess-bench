@@ -113,7 +113,10 @@ pub fn sq_name(s: Sq) -> String {
 }
 
 pub fn parse_sq(t: &str) -> Option<Sq> {
-    let b = t.as_bytes();
+    parse_sq_bytes(t.as_bytes())
+}
+
+pub(crate) fn parse_sq_bytes(b: &[u8]) -> Option<Sq> {
     if b.len() != 2 {
         return None;
     }
@@ -127,4 +130,55 @@ pub(crate) fn offset(s: Sq, df: i8, dr: i8) -> Option<Sq> {
     let f = file_of(s) as i8 + df;
     let r = rank_of(s) as i8 + dr;
     ((0..8).contains(&f) && (0..8).contains(&r)).then(|| sq(f as u8, r as u8))
+}
+
+#[cfg(kani)]
+mod verification {
+    use super::{Color, Kind, file_of, parse_sq_bytes, rank_of, sq};
+
+    #[kani::proof]
+    fn color_piece_and_square_mappings_round_trip() {
+        let color = if kani::any::<bool>() {
+            Color::White
+        } else {
+            Color::Black
+        };
+        assert_eq!(color.other().other(), color);
+        assert!(color.idx() < 2);
+
+        let kind = match kani::any::<u8>() % 6 {
+            0 => Kind::Pawn,
+            1 => Kind::Knight,
+            2 => Kind::Bishop,
+            3 => Kind::Rook,
+            4 => Kind::Queen,
+            _ => Kind::King,
+        };
+        assert_eq!(Kind::from_letter(kind.letter()), Some(kind));
+
+        let square: u8 = kani::any();
+        kani::assume(square < 64);
+        assert!(file_of(square) < 8);
+        assert!(rank_of(square) < 8);
+        assert_eq!(sq(file_of(square), rank_of(square)), square);
+    }
+
+    #[kani::proof]
+    fn square_parser_handles_every_two_byte_input() {
+        let bytes: [u8; 2] = kani::any();
+        let expected = if (b'a'..=b'h').contains(&bytes[0]) && (b'1'..=b'8').contains(&bytes[1]) {
+            Some((bytes[1] - b'1') * 8 + bytes[0] - b'a')
+        } else {
+            None
+        };
+        assert_eq!(parse_sq_bytes(&bytes), expected);
+    }
+
+    #[kani::proof]
+    fn square_parser_rejects_lengths_other_than_two() {
+        let bytes: [u8; 3] = kani::any();
+        let len: usize = kani::any();
+        kani::assume(len <= bytes.len() && len != 2);
+        assert_eq!(parse_sq_bytes(&bytes[..len]), None);
+    }
 }

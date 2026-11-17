@@ -1,12 +1,16 @@
 {
   "players": [
-    {"name":"model-a-default","model":"REPLACE_WITH_MODEL_ID","api_key_env":"OPENROUTER_API_KEY"},
-    {"name":"model-b-default","model":"REPLACE_WITH_MODEL_ID","api_key_env":"OPENROUTER_API_KEY"}
+    {"name": "model-a", "model": "REPLACE_WITH_MODEL_ID", "api_key_env": "OPENROUTER_API_KEY"},
+    {"name": "model-b", "model": "REPLACE_WITH_MODEL_ID", "api_key_env": "OPENROUTER_API_KEY"}
   ],
-  "pairs": 25,
+  "pairs": 1,
   "max_plies": 150,
   "max_attempts": 3,
   "timeout_seconds": 120,
+  "context_chars": 60000,
   "seed": 42,
-  "openings": [[], ["e3/4","e5","Nf3","Nc6","Bb5/c4","Ne7/f6","0-0/"]]
+  "openings": [
+    [],
+    ["e3/4", "e5", "Nf3", "Nc6", "Bb5/c4", "Ne7/f6", "0-0/"]
+  ]
 }
