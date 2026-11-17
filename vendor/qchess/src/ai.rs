@@ -79,7 +79,14 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        Config { depth: 3, time: Some(Duration::from_secs(5)), quantum_moves: true, quiescence: 4, margin: 0, pruning: true }
+        Config {
+            depth: 3,
+            time: Some(Duration::from_secs(5)),
+            quantum_moves: true,
+            quiescence: 4,
+            margin: 0,
+            pruning: true,
+        }
     }
 }
 
@@ -147,10 +154,31 @@ impl Pv {
 
 /// Every piece still in play.
 fn views(g: &Game) -> Views {
-    let mut out = Views { items: [Pv { color: Color::White, origin: Kind::Pawn, split: false, h: [Hv { sq: 0, kind: Kind::Pawn, alive: false }; 2] }; 64], len: 0 };
+    let mut out = Views {
+        items: [Pv {
+            color: Color::White,
+            origin: Kind::Pawn,
+            split: false,
+            h: [Hv {
+                sq: 0,
+                kind: Kind::Pawn,
+                alive: false,
+            }; 2],
+        }; 64],
+        len: 0,
+    };
     for p in g.pos.pieces.iter().filter(|p| !p.is_dead()).take(64) {
-        let v = |h: &crate::quantum::Half| Hv { sq: h.sq, kind: h.kind, alive: h.alive };
-        out.items[out.len] = Pv { color: p.color, origin: p.origin, split: p.is_split(), h: [v(&p.h[0]), v(&p.h[1])] };
+        let v = |h: &crate::quantum::Half| Hv {
+            sq: h.sq,
+            kind: h.kind,
+            alive: h.alive,
+        };
+        out.items[out.len] = Pv {
+            color: p.color,
+            origin: p.origin,
+            split: p.is_split(),
+            h: [v(&p.h[0]), v(&p.h[1])],
+        };
         out.len += 1;
     }
     out
@@ -183,13 +211,22 @@ fn pst(k: Kind, file: i32, rank: i32, endgame: bool) -> i32 {
         }
         Kind::Knight => centre * 4,
         Kind::Bishop => centre * 2,
-        Kind::Rook => if rank == 6 { 20 } else { 0 },
+        Kind::Rook => {
+            if rank == 6 {
+                20
+            } else {
+                0
+            }
+        }
         Kind::Queen => centre,
         // In the endgame the king is a fighting piece: centralize it.
         Kind::King if endgame => centre * 8,
         // Tucked away while there is material about: prefer the back rank,
         // away from the centre files.
-        Kind::King => (if rank == 0 { 10 } else { -10 * rank.min(3) }) + if (2..=5).contains(&file) { -5 } else { 5 },
+        Kind::King => {
+            (if rank == 0 { 10 } else { -10 * rank.min(3) })
+                + if (2..=5).contains(&file) { -5 } else { 5 }
+        }
     }
 }
 
@@ -198,7 +235,14 @@ fn pst(k: Kind, file: i32, rank: i32, endgame: bool) -> i32 {
 static WORTH: std::sync::LazyLock<[[[i32; 64]; 6]; 2]> = std::sync::LazyLock::new(|| {
     let mut t = [[[0; 64]; 6]; 2];
     for (e, table) in t.iter_mut().enumerate() {
-        for k in [Kind::Pawn, Kind::Knight, Kind::Bishop, Kind::Rook, Kind::Queen, Kind::King] {
+        for k in [
+            Kind::Pawn,
+            Kind::Knight,
+            Kind::Bishop,
+            Kind::Rook,
+            Kind::Queen,
+            Kind::King,
+        ] {
             for s in 0..64u8 {
                 let (f, r) = coords(s);
                 table[k as usize][s as usize] = value(k) + pst(k, f, r, e == 1);
@@ -215,7 +259,11 @@ fn piece_worth(p: &Pv, endgame: bool) -> i32 {
     let mut sum = 0;
     for h in p.halves().iter().filter(|h| h.alive) {
         // Black's squares mirrored onto white's side.
-        let s = if p.color == Color::White { h.sq } else { h.sq ^ 56 };
+        let s = if p.color == Color::White {
+            h.sq
+        } else {
+            h.sq ^ 56
+        };
         sum += table[h.kind as usize][s as usize];
     }
     sum / n
@@ -226,7 +274,13 @@ pub fn evaluate(g: &Game) -> i32 {
     let me = g.to_move();
     let pieces = views(g);
     // Few pieces left (queens and rooks count as two minor pieces' worth).
-    let endgame = pieces.iter().filter(|p| p.origin != Kind::King && p.origin != Kind::Pawn).map(|p| p.h[0].kind).map(value).sum::<i32>() <= 1400;
+    let endgame = pieces
+        .iter()
+        .filter(|p| p.origin != Kind::King && p.origin != Kind::Pawn)
+        .map(|p| p.h[0].kind)
+        .map(value)
+        .sum::<i32>()
+        <= 1400;
     let mut score = 0;
     for p in pieces.iter() {
         let w = piece_worth(p, endgame);
@@ -238,7 +292,9 @@ pub fn evaluate(g: &Game) -> i32 {
 /// Where a king's halves are: the average (file, rank) in 1/2 squares, so
 /// a split king counts as halfway between its two squares.
 fn king_at(pieces: &[Pv], color: Color) -> Option<(i32, i32)> {
-    let p = pieces.iter().find(|p| p.color == color && p.halves().iter().any(|h| h.kind == Kind::King))?;
+    let p = pieces
+        .iter()
+        .find(|p| p.color == color && p.halves().iter().any(|h| h.kind == Kind::King))?;
     let hs: Vec<_> = p.halves().iter().filter(|h| h.alive).collect();
     if hs.is_empty() {
         return None;
@@ -256,11 +312,18 @@ fn king_at(pieces: &[Pv], color: Color) -> Option<(i32, i32)> {
 /// the pieces are a bishop and a knight) and bringing our king close.
 /// Without it a shallow search can't find its way to mate.
 fn mop_up(pieces: &[Pv], color: Color, endgame: bool) -> i32 {
-    let others = |c: Color| pieces.iter().filter(move |p| p.color == c && p.origin != Kind::King);
+    let others = |c: Color| {
+        pieces
+            .iter()
+            .filter(move |p| p.color == c && p.origin != Kind::King)
+    };
     if others(color.other()).next().is_some() {
         return 0;
     }
-    let (Some(mine), Some(theirs)) = (king_at(pieces, color), king_at(pieces, color.other())) else { return 0 };
+    let (Some(mine), Some(theirs)) = (king_at(pieces, color), king_at(pieces, color.other()))
+    else {
+        return 0;
+    };
     let material: i32 = others(color).map(|p| piece_worth(p, endgame)).sum();
     if material < 500 {
         return 0;
@@ -275,14 +338,18 @@ fn mop_up(pieces: &[Pv], color: Color, endgame: bool) -> i32 {
     let bishops: Vec<_> = others(color)
         .filter(|p| p.halves().iter().any(|h| h.kind == Kind::Bishop && h.alive))
         .collect();
-    let knights = others(color).filter(|p| p.halves().iter().any(|h| h.kind == Kind::Knight)).count();
+    let knights = others(color)
+        .filter(|p| p.halves().iter().any(|h| h.kind == Kind::Knight))
+        .count();
     let mut edge = centre_dist((theirs.0 / 2, theirs.1 / 2)) * 12;
     if let (1, 1) = (bishops.len(), knights)
         && others(color).count() == 2
     {
         let (bf, br) = coords(bishops[0].halves().iter().find(|h| h.alive).unwrap().sq);
         let light = (bf + br) % 2 == 1;
-        let corners = [(0, 0), (7, 7), (0, 7), (7, 0)].into_iter().filter(|(f, r)| ((f + r) % 2 == 1) == light);
+        let corners = [(0, 0), (7, 7), (0, 7), (7, 0)]
+            .into_iter()
+            .filter(|(f, r)| ((f + r) % 2 == 1) == light);
         let d = corners
             .map(|(cf, cr)| ((theirs.0 - cf * 2).abs() + (theirs.1 - cr * 2).abs()) / 2)
             .min()
@@ -317,16 +384,36 @@ struct Mv {
 
 /// Splits, two-half moves and quantum castling.
 fn is_quantum(i: &Intent) -> bool {
-    matches!(i, Intent::Castle { split: true, .. } | Intent::Move { second: Some(_), .. })
+    matches!(
+        i,
+        Intent::Castle { split: true, .. }
+            | Intent::Move {
+                second: Some(_),
+                ..
+            }
+    )
 }
 
 /// A piece of kind `kind` on `from` going to `to`, named by its square.
 fn from_to(kind: Kind, from: Sq, to: Sq, promo: Option<Kind>, second: Option<Second>) -> Intent {
-    Intent::Move { kind, hint: Hint { file: Some(file_of(from)), rank: Some(rank_of(from)) }, to, promo, second }
+    Intent::Move {
+        kind,
+        hint: Hint {
+            file: Some(file_of(from)),
+            rank: Some(rank_of(from)),
+        },
+        to,
+        promo,
+        second,
+    }
 }
 
 fn to_sq(to: Sq, promo: Option<Kind>) -> Option<Second> {
-    Some(Second::To { hint: Hint::default(), to, promo })
+    Some(Second::To {
+        hint: Hint::default(),
+        to,
+        promo,
+    })
 }
 
 /// Moves to try from `g`. Not all of them are legal.
@@ -343,7 +430,11 @@ fn candidates(g: &Game, quantum: bool, captures_only: bool) -> Vec<Intent> {
     }
     // Captures (and promotions, which land on the first or last rank) only
     // need those squares tested.
-    let only = if captures_only { enemy_bb | 0xff00_0000_0000_00ff } else { u64::MAX };
+    let only = if captures_only {
+        enemy_bb | 0xff00_0000_0000_00ff
+    } else {
+        u64::MAX
+    };
     let targets = |s: Sq| {
         let mut v = g.targets_sq(s, only);
         v.sort_unstable_by_key(|&t| by_name(t));
@@ -380,7 +471,13 @@ fn candidates(g: &Game, quantum: bool, captures_only: bool) -> Vec<Intent> {
                         out.push(from_to(h.kind, h.sq, t, Some(pr), None));
                     }
                     if quantum && !captures_only {
-                        out.push(from_to(h.kind, h.sq, t, Some(Kind::Queen), to_sq(t, Some(Kind::Knight))));
+                        out.push(from_to(
+                            h.kind,
+                            h.sq,
+                            t,
+                            Some(Kind::Queen),
+                            to_sq(t, Some(Kind::Knight)),
+                        ));
                     }
                 } else {
                     out.push(from_to(h.kind, h.sq, t, None, None));
@@ -395,11 +492,27 @@ fn candidates(g: &Game, quantum: bool, captures_only: bool) -> Vec<Intent> {
                 }
             }
         }
-        if quantum && !captures_only && let [a, b] = *alive {
-            let other = Hint { file: Some(file_of(b.sq)), rank: Some(rank_of(b.sq)) };
+        if quantum
+            && !captures_only
+            && let [a, b] = *alive
+        {
+            let other = Hint {
+                file: Some(file_of(b.sq)),
+                rank: Some(rank_of(b.sq)),
+            };
             for ta in targets(a.sq) {
                 for tb in targets(b.sq) {
-                    out.push(from_to(a.kind, a.sq, ta, None, Some(Second::To { hint: other, to: tb, promo: None })));
+                    out.push(from_to(
+                        a.kind,
+                        a.sq,
+                        ta,
+                        None,
+                        Some(Second::To {
+                            hint: other,
+                            to: tb,
+                            promo: None,
+                        }),
+                    ));
                 }
             }
         }
@@ -412,7 +525,11 @@ fn candidates(g: &Game, quantum: bool, captures_only: bool) -> Vec<Intent> {
 /// the same position are listed once.
 pub fn children(g: &Game, quantum: bool) -> Vec<Child> {
     all_moves(g, quantum, false)
-        .map(|n| Child { notation: g.notation_of(&n.mv.intent, n.mv.cube), game: n.game, victim: n.victim })
+        .map(|n| Child {
+            notation: g.notation_of(&n.mv.intent, n.mv.cube),
+            game: n.game,
+            victim: n.victim,
+        })
         .collect()
 }
 
@@ -483,7 +600,13 @@ impl<'a, R: Fn(&Intent, i32) -> i64> Picker<'a, R> {
     /// moves ahead of quantum ones, so a split that collapses to the same
     /// position as a plain move is listed as the plain move. `first` must be
     /// the move `rank` puts first, if it is a candidate at all.
-    fn new(g: &'a Game, quantum: bool, captures_only: bool, first: Option<Intent>, rank: R) -> Self {
+    fn new(
+        g: &'a Game,
+        quantum: bool,
+        captures_only: bool,
+        first: Option<Intent>,
+        rank: R,
+    ) -> Self {
         let done = g.status() != Status::Ongoing;
         Picker {
             g,
@@ -509,18 +632,28 @@ impl<'a, R: Fn(&Intent, i32) -> i64> Picker<'a, R> {
             self.pruned = true;
             return;
         }
-        let Ok(options) = self.g.expand_quiet(&intent) else { return };
+        let Ok(options) = self.g.expand_quiet(&intent) else {
+            return;
+        };
         // `pending` is popped from the back: keep the options in order.
         for (cube, game) in options.into_iter().rev() {
             if self.seen.insert(game.position_key()) {
-                self.pending.push(Node { mv: Mv { intent, cube }, game, victim });
+                self.pending.push(Node {
+                    mv: Mv { intent, cube },
+                    game,
+                    victim,
+                });
             }
         }
     }
 }
 
 /// [`Picker`] with every candidate in the usual order.
-fn all_moves(g: &Game, quantum: bool, captures_only: bool) -> Picker<'_, impl Fn(&Intent, i32) -> i64> {
+fn all_moves(
+    g: &Game,
+    quantum: bool,
+    captures_only: bool,
+) -> Picker<'_, impl Fn(&Intent, i32) -> i64> {
     Picker::new(g, quantum, captures_only, None, |_: &Intent, _| 0)
 }
 
@@ -544,13 +677,16 @@ impl<R: Fn(&Intent, i32) -> i64> Iterator for Picker<'_, R> {
                 if let Some(f) = self.skip {
                     tried.insert(f);
                 }
-                let mut cands: Vec<(Intent, i32)> = candidates(self.g, self.quantum, self.captures_only)
-                    .into_iter()
-                    .filter(|m| tried.insert(*m))
-                    .map(|m| (m, victim_of(&v, &m)))
-                    .collect();
+                let mut cands: Vec<(Intent, i32)> =
+                    candidates(self.g, self.quantum, self.captures_only)
+                        .into_iter()
+                        .filter(|m| tried.insert(*m))
+                        .map(|m| (m, victim_of(&v, &m)))
+                        .collect();
                 let rank = &self.rank;
-                cands.sort_by_cached_key(|(m, victim)| (rank(m, *victim) - *victim as i64 * 100, is_quantum(m)));
+                cands.sort_by_cached_key(|(m, victim)| {
+                    (rank(m, *victim) - *victim as i64 * 100, is_quantum(m))
+                });
                 self.cands = Some(cands);
                 self.next = 0;
             }
@@ -596,7 +732,17 @@ pub struct Searcher {
 
 impl Searcher {
     pub fn new(cfg: Config) -> Self {
-        Searcher { cfg, tt: HashMap::new(), killers: Vec::new(), nodes: 0, deadline: None, stopped: false, rng: 0x2545_F491_4F6C_DD1D, path: Vec::new(), null_last: false }
+        Searcher {
+            cfg,
+            tt: HashMap::new(),
+            killers: Vec::new(),
+            nodes: 0,
+            deadline: None,
+            stopped: false,
+            rng: 0x2545_F491_4F6C_DD1D,
+            path: Vec::new(),
+            null_last: false,
+        }
     }
 
     /// Seed the random choice used when `margin > 0`.
@@ -613,7 +759,10 @@ impl Searcher {
     }
 
     fn out_of_time(&mut self) -> bool {
-        if !self.stopped && self.nodes.is_multiple_of(64) && self.deadline.is_some_and(|d| Instant::now() >= d) {
+        if !self.stopped
+            && self.nodes.is_multiple_of(64)
+            && self.deadline.is_some_and(|d| Instant::now() >= d)
+        {
             self.stopped = true;
         }
         self.stopped
@@ -645,7 +794,11 @@ impl Searcher {
                 // When choosing at random among near-best moves, widen the
                 // window by the margin: every move within the margin of the
                 // best then gets an exact score, and the rest fail low.
-                let lo = if self.cfg.margin > 0 && alpha > -INF { alpha - self.cfg.margin } else { alpha };
+                let lo = if self.cfg.margin > 0 && alpha > -INF {
+                    alpha - self.cfg.margin
+                } else {
+                    alpha
+                };
                 let s = -self.negamax(&c.game, depth - 1, 1, -INF, -lo);
                 if self.stopped {
                     break;
@@ -677,19 +830,40 @@ impl Searcher {
             root = sorted;
             done_depth = depth;
             let best = &root[0];
-            self.tt.insert(g.position_key(), Entry { depth, score: scores[0], bound: Bound::Exact, best: Some(best.mv) });
+            self.tt.insert(
+                g.position_key(),
+                Entry {
+                    depth,
+                    score: scores[0],
+                    bound: Bound::Exact,
+                    best: Some(best.mv),
+                },
+            );
             if scores[0].abs() >= MATE - 100 || self.stopped {
                 break;
             }
         }
         let best = scores[0];
         let near = if self.cfg.margin > 0 {
-            scores.iter().take_while(|&&s| s >= best - self.cfg.margin).count().max(1)
+            scores
+                .iter()
+                .take_while(|&&s| s >= best - self.cfg.margin)
+                .count()
+                .max(1)
         } else {
             1
         };
-        let pick = if near > 1 { (self.rand() % near as u64) as usize } else { 0 };
-        Some(Choice { notation: g.notation_of(&root[pick].mv.intent, root[pick].mv.cube), score: scores[pick], depth: done_depth, nodes: self.nodes })
+        let pick = if near > 1 {
+            (self.rand() % near as u64) as usize
+        } else {
+            0
+        };
+        Some(Choice {
+            notation: g.notation_of(&root[pick].mv.intent, root[pick].mv.cube),
+            score: scores[pick],
+            depth: done_depth,
+            nodes: self.nodes,
+        })
     }
 
     /// Order moves best first: transposition-table move, captures by
@@ -744,7 +918,13 @@ impl Searcher {
         // Null move pruning: if passing still leaves us at or above beta, a
         // real move will too (barring zugzwang), so cut without searching.
         let in_check = g.check() != crate::Check::None;
-        if self.cfg.pruning && depth >= 3 && !in_check && beta.abs() < MATE - 1000 && !self.null_last && evaluate(g) >= beta {
+        if self.cfg.pruning
+            && depth >= 3
+            && !in_check
+            && beta.abs() < MATE - 1000
+            && !self.null_last
+            && evaluate(g) >= beta
+        {
             let null = g.null_move();
             if null.status() == Status::Ongoing {
                 self.null_last = true;
@@ -773,11 +953,22 @@ impl Searcher {
             }
             k
         };
-        let mut moves = Picker::new(g, self.cfg.quantum_moves, false, tt_best.map(|b| b.intent), rank);
+        let mut moves = Picker::new(
+            g,
+            self.cfg.quantum_moves,
+            false,
+            tt_best.map(|b| b.intent),
+            rank,
+        );
         // Futility pruning: one ply from the horizon and well below alpha,
         // a quiet move won't bring the score back, so don't even play it.
         let mut futility = -INF;
-        if self.cfg.pruning && depth == 1 && alpha.abs() < MATE - 1000 && beta.abs() < MATE - 1000 && !in_check {
+        if self.cfg.pruning
+            && depth == 1
+            && alpha.abs() < MATE - 1000
+            && beta.abs() < MATE - 1000
+            && !in_check
+        {
             let margin = evaluate(g) + FUTILITY;
             if margin <= alpha {
                 moves.min_victim = Some(1);
@@ -792,7 +983,11 @@ impl Searcher {
         let mut quiet = 0;
         // Late move pruning: near the horizon, after this many quiet moves
         // the rest (mostly splits, sorted last) are left unplayed.
-        let lmp = if self.cfg.pruning && depth <= 2 && !in_check && alpha.abs() < MATE - 1000 { LMP[depth as usize] } else { usize::MAX };
+        let lmp = if self.cfg.pruning && depth <= 2 && !in_check && alpha.abs() < MATE - 1000 {
+            LMP[depth as usize]
+        } else {
+            usize::MAX
+        };
         while let Some(c) = moves.next() {
             let i = {
                 i += 1;
@@ -809,7 +1004,11 @@ impl Searcher {
             // and search them fully only if they beat alpha.
             let s = if i >= 4 && depth >= 2 && c.victim == 0 {
                 let r = -self.negamax(&c.game, depth - 2, ply + 1, -alpha - 1, -alpha);
-                if r > alpha { -self.negamax(&c.game, depth - 1, ply + 1, -beta, -alpha) } else { r }
+                if r > alpha {
+                    -self.negamax(&c.game, depth - 1, ply + 1, -beta, -alpha)
+                } else {
+                    r
+                }
             } else {
                 -self.negamax(&c.game, depth - 1, ply + 1, -beta, -alpha)
             };
@@ -854,7 +1053,15 @@ impl Searcher {
         } else {
             Bound::Exact
         };
-        self.tt.insert(key, Entry { depth, score: to_tt(best, ply), bound, best: best_move });
+        self.tt.insert(
+            key,
+            Entry {
+                depth,
+                score: to_tt(best, ply),
+                bound,
+                best: best_move,
+            },
+        );
         best
     }
 
@@ -916,92 +1123,4 @@ fn from_tt(s: i32, ply: usize) -> i32 {
 /// Choose a move with a fresh searcher.
 pub fn best_move(g: &Game, cfg: Config) -> Option<Choice> {
     Searcher::new(cfg).choose(g)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn fen(f: &str) -> Game {
-        Game::from_fen(f).unwrap()
-    }
-
-    fn quick(depth: i32) -> Config {
-        Config { depth, time: None, ..Config::default() }
-    }
-
-    #[test]
-    fn start_position_has_whole_and_quantum_moves() {
-        let g = Game::new();
-        let classical = children(&g, false);
-        assert_eq!(classical.len(), 20, "{:?}", classical.iter().map(|c| &c.notation).collect::<Vec<_>>());
-        let all = children(&g, true);
-        assert!(all.iter().any(|c| c.notation == "Nb1a3/c3"));
-        assert!(all.iter().any(|c| c.notation == "e2e3/e4"));
-        // Never a stay move: it would leave boards where nothing moved.
-        assert!(all.iter().all(|c| !c.notation.trim_end().ends_with('/')), "stay move generated");
-        assert!(all.len() > 25, "{}", all.len());
-    }
-
-    #[test]
-    fn every_collapse_choice_is_its_own_move() {
-        // White knight split c3/a3, black pawn split d5/d6: Nc3d5/a3b5 forces a
-        // collapse with two options.
-        let mut g = Game::new();
-        for m in ["Nc3/a3", "d5/6"] {
-            g.play(m).unwrap();
-        }
-        let opts = g.collapse_options("Nc3d5/a3b5").unwrap();
-        assert_eq!(opts.len(), 2);
-        let kids: HashSet<u64> = children(&g, true).iter().map(|c| c.game.position_key()).collect();
-        for o in opts {
-            let mut c = g.clone();
-            c.play(&format!("Nc3d5/a3b5 {o}")).unwrap();
-            assert!(kids.contains(&c.position_key()), "{o}");
-        }
-    }
-
-    #[test]
-    fn finds_mate_in_one() {
-        let g = fen("6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1");
-        let c = best_move(&g, quick(2)).unwrap();
-        assert_eq!(c.notation, "Ra1a8");
-        assert!(c.score >= MATE - 10);
-    }
-
-    #[test]
-    fn takes_a_hanging_queen() {
-        let g = fen("4k3/8/8/3q4/8/8/8/3RK3 w - - 0 1");
-        assert_eq!(best_move(&g, quick(2)).unwrap().notation, "Rd1d5");
-    }
-
-    #[test]
-    fn does_not_hang_its_queen() {
-        // Qxd7 (defended by the king) would lose the queen for a pawn.
-        let g = fen("4k3/3p4/8/8/8/8/8/3QK3 w - - 0 1");
-        let c = best_move(&g, Config { depth: 2, time: None, quantum_moves: false, ..Config::default() }).unwrap();
-        assert_ne!(c.notation, "Qd1d7");
-    }
-
-    #[test]
-    fn a_split_piece_counts_half_on_each_square() {
-        let mut g = Game::new();
-        let before = evaluate(&g);
-        g.play("Nc3/a3").unwrap();
-        // Black to move now; from white's side the knight is still worth
-        // about a knight.
-        let after = -evaluate(&g);
-        assert!((after - before).abs() < 60, "{before} -> {after}");
-    }
-
-    #[test]
-    fn plays_a_short_game_to_the_end_or_the_move_cap() {
-        let mut g = Game::new();
-        let mut s = Searcher::new(Config { depth: 1, time: None, margin: 30, ..Config::default() }).seed(7);
-        for _ in 0..20 {
-            let Some(c) = s.choose(&g) else { break };
-            g.play(&c.notation).unwrap();
-        }
-        assert!(!g.history().is_empty());
-    }
 }

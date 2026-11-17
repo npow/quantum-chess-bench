@@ -13,3 +13,6 @@ serde = { version = "1", features = ["derive"], optional = true }
 [features]
 # Serialize/Deserialize for `Rating`.
 serde = ["dep:serde"]
+
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ["cfg(kani)"] }

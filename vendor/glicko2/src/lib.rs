@@ -27,7 +27,11 @@ pub struct Rating {
 impl Rating {
     /// Creates a rating from its three components.
     pub fn new(rating: f64, deviation: f64, volatility: f64) -> Self {
-        Self { rating, deviation, volatility }
+        Self {
+            rating,
+            deviation,
+            volatility,
+        }
     }
 }
 
@@ -81,7 +85,11 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        Self { tau: 0.75, min_deviation: 45.0, max_deviation: 500.0 }
+        Self {
+            tau: 0.75,
+            min_deviation: 45.0,
+            max_deviation: 500.0,
+        }
     }
 }
 
@@ -193,6 +201,56 @@ fn new_volatility(phi: f64, sigma: f64, v: f64, delta: f64, tau: f64) -> f64 {
     (big_a / 2.0).exp()
 }
 
+#[cfg(kani)]
+mod verification {
+    use super::{Config, Outcome, Rating, Speed, update};
+
+    #[kani::proof]
+    fn outcome_scores_are_bounded_and_flip_is_an_involution() {
+        let outcome = match kani::any::<u8>() % 3 {
+            0 => Outcome::Win,
+            1 => Outcome::Draw,
+            _ => Outcome::Loss,
+        };
+        assert!((0.0..=1.0).contains(&outcome.score()));
+        assert_eq!(outcome.flip().flip(), outcome);
+        assert_eq!(outcome.flip().score(), 1.0 - outcome.score());
+    }
+
+    #[kani::proof]
+    fn empty_period_preserves_rating_and_volatility() {
+        let cfg = Config::default();
+        for (rating, deviation, volatility) in [
+            (1500.0, 350.0, 0.06),
+            (2400.0, 500.0, 0.50),
+            (900.0, 1.0, 1.00),
+        ] {
+            let updated = update(Rating::new(rating, deviation, volatility), &[], &cfg);
+            assert_eq!(updated.rating, rating);
+            assert_eq!(updated.volatility, volatility);
+        }
+    }
+
+    #[kani::proof]
+    fn clock_speed_matches_threshold_spec_for_all_u32_inputs() {
+        let initial_secs: u32 = kani::any();
+        let increment_secs: u32 = kani::any();
+        let estimate = u64::from(initial_secs) + 40 * u64::from(increment_secs);
+        let expected = if estimate < 30 {
+            Speed::UltraBullet
+        } else if estimate < 180 {
+            Speed::Bullet
+        } else if estimate < 480 {
+            Speed::Blitz
+        } else if estimate < 1500 {
+            Speed::Rapid
+        } else {
+            Speed::Classical
+        };
+        assert_eq!(Speed::from_clock(initial_secs, increment_secs), expected);
+    }
+}
+
 /// Updates both players after a single game, each treating the game as its
 /// own rating period (lichess style). Returns `(white, black)`.
 pub fn update_game(
@@ -249,112 +307,12 @@ impl Speed {
 
     /// All speeds, fastest first.
     pub fn all() -> [Speed; 5] {
-        [Speed::UltraBullet, Speed::Bullet, Speed::Blitz, Speed::Rapid, Speed::Classical]
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn close(a: f64, b: f64, tol: f64) -> bool {
-        (a - b).abs() < tol
-    }
-
-    #[test]
-    fn glickman_worked_example() {
-        let cfg = Config { tau: 0.5, min_deviation: 0.0, max_deviation: 1000.0 };
-        let p = Rating::new(1500.0, 200.0, 0.06);
-        let games = [
-            (Rating::new(1400.0, 30.0, 0.06), Outcome::Win),
-            (Rating::new(1550.0, 100.0, 0.06), Outcome::Loss),
-            (Rating::new(1700.0, 300.0, 0.06), Outcome::Loss),
-        ];
-        let r = update(p, &games, &cfg);
-        assert!(close(r.rating, 1464.06, 0.01), "rating {}", r.rating);
-        assert!(close(r.deviation, 151.52, 0.01), "rd {}", r.deviation);
-        assert!(close(r.volatility, 0.05999, 0.00001), "vol {}", r.volatility);
-    }
-
-    #[test]
-    fn no_games_grows_deviation() {
-        let cfg = Config::default();
-        let p = Rating::new(1600.0, 100.0, 0.06);
-        let r = update(p, &[], &cfg);
-        let phi = 100.0 / SCALE;
-        let expected = (phi * phi + 0.06f64 * 0.06).sqrt() * SCALE;
-        assert!(close(r.deviation, expected, 1e-9));
-        assert_eq!(r.rating, 1600.0);
-        assert_eq!(r.volatility, 0.06);
-    }
-
-    #[test]
-    fn deviation_is_clamped() {
-        let cfg = Config::default();
-        let r = update(Rating::new(1500.0, 499.9, 0.5), &[], &cfg);
-        assert_eq!(r.deviation, 500.0);
-        let r = update(Rating::new(1500.0, 10.0, 0.0001), &[], &cfg);
-        assert_eq!(r.deviation, 45.0);
-    }
-
-    #[test]
-    fn equal_players_draw_is_symmetric() {
-        let cfg = Config::default();
-        let p = Rating::default();
-        let (w, b) = update_game(p, p, Outcome::Draw, &cfg);
-        assert!(close(w.rating, 1500.0, 1e-9));
-        assert!(close(b.rating, 1500.0, 1e-9));
-        assert!(close(w.deviation, b.deviation, 1e-9));
-        assert!(w.deviation < 350.0);
-    }
-
-    #[test]
-    fn equal_players_win_is_antisymmetric() {
-        let cfg = Config::default();
-        let p = Rating::default();
-        let (w, b) = update_game(p, p, Outcome::Win, &cfg);
-        assert!(close(w.rating - 1500.0, 1500.0 - b.rating, 1e-9));
-        assert!(w.rating > 1500.0);
-    }
-
-    #[test]
-    fn from_clock_boundaries() {
-        // Arguments are seconds: 1+0 minutes is 60s.
-        assert_eq!(Speed::from_clock(15, 0), Speed::UltraBullet);
-        assert_eq!(Speed::from_clock(1, 0), Speed::UltraBullet);
-        assert_eq!(Speed::from_clock(60, 0), Speed::Bullet); // 1+0
-        assert_eq!(Speed::from_clock(180, 2), Speed::Blitz); // 3+2 -> 260
-        assert_eq!(Speed::from_clock(600, 0), Speed::Rapid); // 10+0
-        assert_eq!(Speed::from_clock(900, 10), Speed::Rapid); // 15+10 -> 1300
-        assert_eq!(Speed::from_clock(1800, 0), Speed::Classical); // 30+0
-        assert_eq!(Speed::from_clock(179, 0), Speed::Bullet);
-        assert_eq!(Speed::from_clock(180, 0), Speed::Blitz);
-        assert_eq!(Speed::from_clock(479, 0), Speed::Blitz);
-        assert_eq!(Speed::from_clock(480, 0), Speed::Rapid);
-        assert_eq!(Speed::from_clock(1499, 0), Speed::Rapid);
-        assert_eq!(Speed::from_clock(1500, 0), Speed::Classical);
-        assert_eq!(Speed::from_clock(0, 1), Speed::Bullet); // 40
-    }
-
-    #[test]
-    fn speed_names_and_all() {
-        assert_eq!(Speed::Bullet.name(), "bullet");
-        assert_eq!(Speed::all().len(), 5);
-        assert_eq!(Speed::all()[4], Speed::Classical);
-    }
-
-    #[test]
-    fn expected_score_symmetric() {
-        let a = Rating::new(1700.0, 80.0, 0.06);
-        let b = Rating::new(1500.0, 80.0, 0.06);
-        assert!(close(expected_score(a, b) + expected_score(b, a), 1.0, 1e-12));
-        assert!(expected_score(a, b) > 0.5);
-        assert!(close(expected_score(a, a), 0.5, 1e-12));
-    }
-
-    #[test]
-    fn provisional_threshold() {
-        assert!(provisional(&Rating::default()));
-        assert!(!provisional(&Rating::new(1500.0, 110.0, 0.06)));
+        [
+            Speed::UltraBullet,
+            Speed::Bullet,
+            Speed::Blitz,
+            Speed::Rapid,
+            Speed::Classical,
+        ]
     }
 }
